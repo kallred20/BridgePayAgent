@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\BridgePay.Agent.Contracts\BridgePay.Agent.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="netstandard">
+      <HintPath>..\..\third_party\pax\poslink2\libs\netstandard.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="POSLinkCore">
+      <HintPath>..\..\third_party\pax\poslink2\libs\POSLinkCore.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="POSLinkAdmin">
+      <HintPath>..\..\third_party\pax\poslink2\libs\POSLinkAdmin.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="POSLinkSemiIntegration">
+      <HintPath>..\..\third_party\pax\poslink2\libs\POSLinkSemiIntegration.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Renci.SshNet">
+      <HintPath>..\..\third_party\pax\poslink2\libs\Renci.SshNet.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="SshNet.Security.Cryptography">
+      <HintPath>..\..\third_party\pax\poslink2\libs\SshNet.Security.Cryptography.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

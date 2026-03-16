@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BridgePay.Agent.Api/BridgePay.Agent.Api.csproj" />
+    <Project Path="src/BridgePay.Agent.Contracts/BridgePay.Agent.Contracts.csproj" />
+    <Project Path="src/BridgePay.Agent.Messaging/BridgePay.Agent.Messaging.csproj" />
+    <Project Path="src/BridgePay.Agent.PosLink/BridgePay.Agent.PosLink.csproj" />
+    <Project Path="src/BridgePay.Agent.Storage/BridgePay.Agent.Storage.csproj" />
+    <Project Path="src/BridgePay.Agent.Terminals/BridgePay.Agent.Terminals.csproj" />
+    <Project Path="src/BridgePay.Agent.Worker/BridgePay.Agent.Worker.csproj" />
+  </Folder>
+</Solution>

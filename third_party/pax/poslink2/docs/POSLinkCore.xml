@@ -1,0 +1,274 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>POSLinkCore</name>
+    </assembly>
+    <members>
+        <member name="T:POSLinkCore.CommunicationSetting.AidlSetting">
+            <summary>
+            AIDL communication setting
+            </summary>
+        </member>
+        <member name="F:POSLinkCore.CommunicationSetting.AidlSetting.ActionName">
+            <summary>
+            Action Name.
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.AidlSetting.PackageName">
+            <summary>
+            Package Name.
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.AidlSetting.DoTrans(System.String)">
+            <summary>
+            Do command.
+            </summary>
+            <param name="request">Command data.</param>
+            <returns></returns>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.AidlSetting.AbortTrans">
+            <summary>
+            Cancel the command.
+            </summary>
+        </member>
+        <member name="T:POSLinkCore.CommunicationSetting.CommunicationSetting">
+            <summary>
+            Communication setting
+            </summary>
+        </member>
+        <member name="T:POSLinkCore.CommunicationSetting.CustomerCommunicationSetting">
+            <summary>
+            User defined communication type.
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.CustomerCommunicationSetting.Timeout">
+            <summary>
+            Time measurement unit - millisecond/ms
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.CustomerCommunicationSetting.IsSameCommunication(POSLinkCore.CommunicationSetting.CustomerCommunicationSetting)">
+            <summary>
+            Use to determine whether the communication is same.
+            </summary>
+            <param name="setting"></param>
+            <returns></returns>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.CustomerCommunicationSetting.Open">
+            <summary>
+            Open communication.
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.CustomerCommunicationSetting.Write(System.Byte[],System.Int32,System.Int32)">
+            <summary>
+            Send data to terminal.
+            </summary>
+            <param name="buffer"></param>
+            <param name="offset"></param>
+            <param name="count"></param>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.CustomerCommunicationSetting.Read(System.Byte[]@,System.Int32,System.Int32)">
+            <summary>
+            Receive data from terminal.
+            </summary>
+            <param name="buffer"></param>
+            <param name="offset"></param>
+            <param name="count"></param>
+            <returns></returns>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.CustomerCommunicationSetting.Close">
+            <summary>
+            Close communication
+            </summary>
+        </member>
+        <member name="T:POSLinkCore.CommunicationSetting.HttpSetting">
+            <summary>
+            HTTP communication setting
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.HttpSetting.Ip">
+            <summary>
+            Ip
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.HttpSetting.Port">
+            <summary>
+            Port
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.HttpSetting.Timeout">
+            <summary>
+            Time measurement unit - millisecond/ms
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.HttpSetting.#ctor">
+            <summary>
+            Initializes a newly created HttpSetting object.
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.HttpSetting.#ctor(System.String,System.Int32,System.Int32)">
+            <summary>
+            Initializes a newly created HttpSetting object according the parameters.
+            </summary>
+        </member>
+        <member name="T:POSLinkCore.CommunicationSetting.HttpsSetting">
+            <summary>
+            HTTPS communication setting
+            <para>When developing Android application using Xamarin or MAUI, you may encounter SSL Authentication failed exception then you need to disable server certificate validation on Android to resove.</para>
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.HttpsSetting.Ip">
+            <summary>
+            Ip
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.HttpsSetting.Port">
+            <summary>
+            Port
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.HttpsSetting.Timeout">
+            <summary>
+            Time measurement unit - millisecond/ms
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.HttpsSetting.#ctor">
+            <summary>
+            Initializes a newly created HttpsSetting object.
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.HttpsSetting.#ctor(System.String,System.Int32,System.Int32)">
+            <summary>
+            Initializes a newly created HttpsSetting object according the parameters.
+            </summary>
+            <param name="ip"></param>
+            <param name="port"></param>
+            <param name="timeout"></param>
+        </member>
+        <member name="T:POSLinkCore.CommunicationSetting.SslSetting">
+            <summary>
+            SSL communication setting
+            <para>When developing Android application using Xamarin or MAUI, you may encounter SSL Authentication failed exception then you need to disable server certificate validation on Android to resove.</para>
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.SslSetting.Ip">
+            <summary>
+            Ip
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.SslSetting.Port">
+            <summary>
+            Port
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.SslSetting.Timeout">
+            <summary>
+            Time measurement unit - millisecond/ms
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.SslSetting.#ctor">
+            <summary>
+            Initializes a newly created SslSetting object.
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.SslSetting.#ctor(System.String,System.Int32,System.Int32)">
+            <summary>
+            Initializes a newly created SslSetting object according the parameters.
+            </summary>
+            <param name="ip"></param>
+            <param name="port"></param>
+            <param name="timeout"></param>
+        </member>
+        <member name="T:POSLinkCore.CommunicationSetting.TcpSetting">
+            <summary>
+            TCP communication setting
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.TcpSetting.Ip">
+            <summary>
+            Ip
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.TcpSetting.Port">
+            <summary>
+            Port
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.CommunicationSetting.TcpSetting.Timeout">
+            <summary>
+            Time measurement unit - millisecond/ms
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.TcpSetting.#ctor">
+            <summary>
+            Initializes a newly created TcpSetting object.
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.CommunicationSetting.TcpSetting.#ctor(System.String,System.Int32,System.Int32)">
+            <summary>
+            Initializes a newly created TcpSetting object  according the parameters.
+            </summary>
+            <param name="ip"></param>
+            <param name="port"></param>
+            <param name="timeout"></param>
+        </member>
+        <member name="T:POSLinkCore.LogSetting">
+            <summary>
+            Log Setting.
+            </summary>
+        </member>
+        <member name="T:POSLinkCore.LogSetting.LogLevel">
+            <summary>
+            Log Level. 
+            </summary>
+        </member>
+        <member name="F:POSLinkCore.LogSetting.LogLevel.Error">
+            <summary>
+            Record error level log.
+            </summary>
+        </member>
+        <member name="F:POSLinkCore.LogSetting.LogLevel.Debug">
+            <summary>
+            Record debug level log.
+            </summary>
+        </member>
+        <member name="M:POSLinkCore.LogSetting.#ctor">
+            <summary>
+            Initializes a newly created LogSetting object.
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.LogSetting.FileName">
+            <summary>
+            Log file name. Default value is "POSLog". 
+            <para>The SDK will add date and suffix name. The real file name format is name+yyyyMMdd.txt.</para>
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.LogSetting.FilePath">
+            <summary>
+            Log file path. The default path is current working directory.
+            <para>Default file path is not support Xamarin.Android and Xamarin.IOS, please set their path.</para>
+            <para>For example:</para>
+            <para>Android : BaseContext.GetExternalFilesDir(null).Path</para>
+            <para>IOS: Environment.GetFolderPath(Environment.SpecialFolder.Personal)</para>
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.LogSetting.Days">
+            <summary>
+            Indicates file log retention. Default value is 30 days.
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.LogSetting.Enabled">
+            <summary>
+             Log Switch. 
+            <para>True: Enable log.</para>
+            <para>False: Disable log.</para>
+            </summary>
+        </member>
+        <member name="P:POSLinkCore.LogSetting.Level">
+            <summary>
+            Log level.
+            <para>Error: Record Error level log.</para>
+            <para>Debug: Record all log.</para>
+            </summary>
+        </member>
+    </members>
+</doc>

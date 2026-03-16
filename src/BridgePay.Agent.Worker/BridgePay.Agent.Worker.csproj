@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-BridgePay.Agent.Worker-79b6a75b-5c2a-41b3-8d1c-85cadba919c1</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BridgePay.Agent.Contracts\BridgePay.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\BridgePay.Agent.PosLink\BridgePay.Agent.PosLink.csproj" />
+    <ProjectReference Include="..\BridgePay.Agent.Terminals\BridgePay.Agent.Terminals.csproj" />
+    <ProjectReference Include="..\BridgePay.Agent.Messaging\BridgePay.Agent.Messaging.csproj" />
+    <ProjectReference Include="..\BridgePay.Agent.Api\BridgePay.Agent.Api.csproj" />
+    <ProjectReference Include="..\BridgePay.Agent.Storage\BridgePay.Agent.Storage.csproj" />
+  </ItemGroup>
+</Project>
