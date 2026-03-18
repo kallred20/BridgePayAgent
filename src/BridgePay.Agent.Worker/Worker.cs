@@ -27,40 +27,21 @@ public sealed class Worker : BackgroundService
     {
         _logger.LogInformation("BridgePay Agent started.");
 
-        while (!stoppingToken.IsCancellationRequested)
+        var terminal = _terminalRegistry.GetByTerminalId("test-terminal");
+
+        if (terminal is null)
         {
-            try
-            {
-                var terminal = _terminalRegistry.GetByTerminalId("lane-1-terminal");
-
-                if (terminal is not null)
-                {
-                    var ok = await _paxClient.PingAsync(
-                        terminal.IpAddress,
-                        terminal.Port,
-                        stoppingToken);
-
-                    _logger.LogInformation(
-                        "Terminal lookup succeeded. TerminalId={TerminalId}, Ip={Ip}, Port={Port}, Ping={Ping}",
-                        terminal.TerminalId,
-                        terminal.IpAddress,
-                        terminal.Port,
-                        ok);
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unhandled worker error.");
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            }
+            _logger.LogError("Terminal not found.");
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Resolved terminal {TerminalId} to {IpAddress}:{Port}",
+                terminal.TerminalId,
+                terminal.IpAddress,
+                terminal.Port);
         }
 
-        _logger.LogInformation("BridgePay Agent stopping.");
+        await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 }

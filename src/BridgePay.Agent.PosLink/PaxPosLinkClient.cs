@@ -1,7 +1,8 @@
 using BridgePay.Agent.Contracts;
-using POSLinkAdmin;
+using BridgePay.Agent.Terminals;
+using POSLinkAdmin.Const;
 using POSLinkAdmin.Util;
-using POSLinkCore.CommSetting;
+using POSLinkCore.CommunicationSetting;
 using POSLinkSemiIntegration;
 using POSLinkSemiIntegration.Transaction;
 using POSLinkSemiIntegration.Util;
@@ -12,19 +13,21 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
 {
     public Task<TerminalTransactionResult> SaleAsync(
         TerminalSaleRequest request,
+        TerminalEndpoint endpoint,
         CancellationToken cancellationToken)
     {
-        // POSLink is sync-style, so keep it simple for now
-        var result = ExecuteSale(request);
+        var result = ExecuteSale(request, endpoint);
         return Task.FromResult(result);
     }
 
-    private TerminalTransactionResult ExecuteSale(TerminalSaleRequest request)
+    private TerminalTransactionResult ExecuteSale(
+        TerminalSaleRequest request,
+        TerminalEndpoint endpoint)
     {
         var tcp = new TcpSetting
         {
-            Ip = request.IpAddress,
-            Port = request.Port,
+            Ip = endpoint.IpAddress,
+            Port = endpoint.Port,
             Timeout = 60000
         };
 
@@ -36,23 +39,16 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
             TransactionType = TransactionType.Sale,
             AmountInformation = new AmountRequest
             {
-                TransactionAmount = ToPosLinkAmount(request.Amount)
+                TransactionAmount = request.Amount.ToString()
             },
             TraceInformation = new TraceRequest
             {
                 EcrReferenceNumber = request.EcrReferenceNumber ?? Guid.NewGuid().ToString("N"),
                 InvoiceNumber = request.InvoiceNumber ?? string.Empty
-            },
-            CashierInformation = new CashierRequest
-            {
-                ClerkId = request.ClerkId ?? string.Empty
             }
-
-            // We will set TransactionType next once you confirm the enum value in IntelliSense
         };
 
-        DoCreditResponse? response = null;
-        var txResult = terminal.Transaction.DoCredit(saleRequest, ref response);
+        terminal.Transaction.DoCredit(saleRequest, out DoCreditResponse? response);
 
         if (response is null)
         {
@@ -66,27 +62,14 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
 
         return new TerminalTransactionResult
         {
-            Success = IsApproved(response.ResponseCode),
+            Success = string.Equals(response.ResponseCode, "000000", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(response.ResponseCode, "0", StringComparison.OrdinalIgnoreCase),
             ResponseCode = response.ResponseCode ?? string.Empty,
             ResponseMessage = response.ResponseMessage ?? string.Empty,
             ApprovalCode = response.HostInformation?.AuthorizationCode,
             ReferenceNumber = response.TraceInformation?.EcrReferenceNumber,
-            CardType = response.AccountInformation?.CardType?.ToString(),
-            MaskedPan = response.AccountInformation?.MaskedPan
+            CardType = response.AccountInformation?.CardType.ToString(),
+            MaskedPan = response.AccountInformation?.CurrentAccountNumber
         };
-    }
-
-    private static string ToPosLinkAmount(long amountInCents)
-    {
-        // POSLink amount is numeric cents as string, e.g. 12.34 => "1234"
-        return amountInCents.ToString();
-    }
-
-    private static bool IsApproved(string? responseCode)
-    {
-        // Start simple. You can refine after you see real terminal values.
-        return string.Equals(responseCode, "000000", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(responseCode, "0", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(responseCode, "APPROVED", StringComparison.OrdinalIgnoreCase);
     }
 }

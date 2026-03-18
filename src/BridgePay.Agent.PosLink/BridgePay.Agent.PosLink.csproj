@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BridgePay.Agent.Contracts\BridgePay.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\BridgePay.Agent.Terminals\BridgePay.Agent.Terminals.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

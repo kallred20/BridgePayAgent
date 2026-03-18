@@ -13,6 +13,9 @@ builder.Services.AddWindowsService(options =>
     options.ServiceName = "BridgePay Agent";
 });
 
+builder.Services.Configure<TerminalOptions>(
+    builder.Configuration.GetSection("TerminalOptions"));
+
 builder.Services.AddHostedService<Worker>();
 
 builder.Services.AddSingleton<IPaxPosLinkClient, PaxPosLinkClient>();
