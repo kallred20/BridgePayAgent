@@ -1,3 +1,5 @@
+using System.Text.Json;
+using BridgePay.Agent.Contracts;
 using BridgePay.Agent.Messaging;
 using BridgePay.Agent.PosLink;
 using BridgePay.Agent.Terminals;
@@ -41,7 +43,28 @@ public sealed class Worker : BackgroundService
                 terminal.IpAddress,
                 terminal.Port);
         }
+        // start test 
+        var endpoint = new TerminalEndpoint
+        {
+            TerminalId = "test-terminal",
+            IpAddress = "192.168.68.65",
+            Port = 10009
+        };
 
+        var request = new TerminalSaleRequest
+        {
+            PaymentId = Guid.NewGuid().ToString("N"),
+            TerminalId = endpoint.TerminalId,
+            Amount = 100,
+            InvoiceNumber = "INV-1001",
+            EcrReferenceNumber = Guid.NewGuid().ToString("N"),
+            ClerkId = "123"
+        };
+
+        var result = await _paxClient.SaleAsync(request, endpoint, CancellationToken.None);
+        Console.WriteLine(request.PaymentId);
+        Console.WriteLine(JsonSerializer.Serialize(result));
+        // end test
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 }

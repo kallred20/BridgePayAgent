@@ -2,6 +2,7 @@
 
 public sealed class TerminalSaleRequest
 {
+    public required string PaymentId { get; init; }
     public required string TerminalId { get; init; }
     public required long Amount { get; init; } // cents
 
