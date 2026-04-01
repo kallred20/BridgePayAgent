@@ -4,6 +4,12 @@
     <ProjectReference Include="..\BridgePay.Agent.Contracts\BridgePay.Agent.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Google.Api.Gax" Version="4.13.1" />
+    <PackageReference Include="Google.Cloud.PubSub.V1" Version="3.33.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

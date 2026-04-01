@@ -2,5 +2,5 @@
 
 public interface IPubSubConsumer
 {
-    Task<string?> PullAsync(CancellationToken cancellationToken);
+    Task RunAsync(Func<string, CancellationToken, Task<bool>> handler, CancellationToken cancellationToken);
 }

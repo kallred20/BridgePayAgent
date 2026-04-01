@@ -1,5 +1,6 @@
 using BridgePay.Agent.Contracts;
 using BridgePay.Agent.Terminals;
+using Microsoft.Extensions.Logging;
 using POSLinkAdmin.Const;
 using POSLinkAdmin.Util;
 using POSLinkCore.CommunicationSetting;
@@ -11,6 +12,16 @@ namespace BridgePay.Agent.PosLink;
 
 public sealed class PaxPosLinkClient : IPaxPosLinkClient
 {
+    private const int TimeoutMs = 60000;
+    private const int MaxEcrReferenceLength = 32;
+    private const int MaxClerkIdLength = 8;
+    private readonly ILogger<PaxPosLinkClient> _logger;
+
+    public PaxPosLinkClient(ILogger<PaxPosLinkClient> logger)
+    {
+        _logger = logger;
+    }
+
     public Task<TerminalTransactionResult> SaleAsync(
         TerminalSaleRequest request,
         TerminalEndpoint endpoint,
@@ -27,6 +38,21 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
         TerminalEndpoint endpoint,
         CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return Failure("INVALID_REQUEST", "Request is required.");
+        }
+
+        if (endpoint is null)
+        {
+            return Failure("INVALID_ENDPOINT", "Terminal endpoint is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.TerminalId))
+        {
+            return Failure("INVALID_REQUEST", "TerminalId is required.");
+        }
+
         if (request.Amount <= 0)
         {
             return Failure("INVALID_AMOUNT", "Amount must be greater than zero.");
@@ -42,23 +68,51 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
             return Failure("INVALID_ENDPOINT", "Terminal port must be greater than zero.");
         }
 
+        if (!string.Equals(request.TerminalId, endpoint.TerminalId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Failure("TERMINAL_MISMATCH", "Request TerminalId does not match endpoint TerminalId.");
+        }
+
+        var ecrReferenceNumber = BuildEcrReferenceNumber(request);
+        if (ecrReferenceNumber.Length > MaxEcrReferenceLength)
+        {
+            return Failure(
+                "INVALID_ECR_REF",
+                $"EcrReferenceNumber exceeds {MaxEcrReferenceLength} characters.");
+        }
+        _logger.LogInformation(ecrReferenceNumber);
+
+        var invoiceNumber = request.InvoiceNumber?.Trim() ?? string.Empty;
+
+        var clerkId = request.ClerkId?.Trim();
+        if (!string.IsNullOrWhiteSpace(clerkId) && clerkId.Length > MaxClerkIdLength)
+        {
+            return Failure(
+                "INVALID_CLERK_ID",
+                $"ClerkId exceeds {MaxClerkIdLength} characters.");
+        }
+
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            _logger.LogInformation(
+                "Starting PAX sale for payment {PaymentId} terminal {TerminalId} amount {Amount} to {IpAddress}:{Port}",
+                request.PaymentId,
+                request.TerminalId,
+                request.Amount,
+                endpoint.IpAddress,
+                endpoint.Port);
 
             var tcp = new TcpSetting
             {
                 Ip = endpoint.IpAddress,
                 Port = endpoint.Port,
-                Timeout = 60000
+                Timeout = TimeoutMs
             };
 
             var sdk = POSLinkSemi.GetPOSLinkSemi();
             var terminal = sdk.GetTerminal(tcp);
-
-            var ecrRef = string.IsNullOrWhiteSpace(request.EcrReferenceNumber)
-                ? request.PaymentId
-                : request.EcrReferenceNumber;
 
             var saleRequest = new DoCreditRequest
             {
@@ -69,18 +123,21 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 },
                 TraceInformation = new TraceRequest
                 {
-                    EcrReferenceNumber = ecrRef,
-                    InvoiceNumber = request.InvoiceNumber ?? string.Empty
-                },
-                CashierInformation = string.IsNullOrWhiteSpace(request.ClerkId)
-                    ? null
-                    : new CashierRequest
-                    {
-                        ClerkId = request.ClerkId
-                    }
+                    EcrReferenceNumber = "PAY110023226",
+                    InvoiceNumber = "inv000123"
+                }
             };
 
+            // if (!string.IsNullOrWhiteSpace(clerkId))
+            // {
+            //     saleRequest.CashierInformation = new CashierRequest
+            //     {
+            //         ClerkId = clerkId
+            //     };
+            // }
+
             terminal.Transaction.DoCredit(saleRequest, out DoCreditResponse? response);
+
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -94,31 +151,53 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 string.Equals(responseCode, "000000", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(responseCode, "0", StringComparison.OrdinalIgnoreCase);
 
+            _logger.LogInformation(
+                "PAX sale finished for payment {PaymentId} terminal {TerminalId}: success={Success}, code={ResponseCode}, message={ResponseMessage}",
+                request.PaymentId,
+                request.TerminalId,
+                success,
+                responseCode,
+                response.ResponseMessage ?? string.Empty);
+
             return new TerminalTransactionResult
             {
                 Success = success,
                 ResponseCode = responseCode,
                 ResponseMessage = response.ResponseMessage ?? string.Empty,
-                ApprovalCode = response.HostInformation?.AuthorizationCode,
-                ReferenceNumber = response.TraceInformation?.EcrReferenceNumber,
-                CardType = response.AccountInformation?.CardType.ToString(),
-                MaskedPan = response.AccountInformation?.CurrentAccountNumber,
-
-                // Add these to your result type if available:
-                // OriginalReferenceNumber = response.HostInformation?.ReferenceNumber,
-                // HostReferenceNumber = response.HostInformation?.HostReferenceNumber,
-                // TransactionNumber = response.TraceInformation?.ReferenceNumber,
-                // GlobalUid = response.TraceInformation?.GlobalUid
+                ApprovalCode = response.HostInformation?.AuthorizationCode ?? string.Empty,
+                ReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
+                CardType = response.AccountInformation?.CardType.ToString() ?? string.Empty,
+                MaskedPan = response.AccountInformation?.CurrentAccountNumber ?? string.Empty
             };
         }
         catch (OperationCanceledException)
         {
+            _logger.LogWarning(
+                "PAX sale cancelled for payment {PaymentId} terminal {TerminalId}",
+                request.PaymentId,
+                request.TerminalId);
             return Failure("CANCELLED", "Sale operation was cancelled.");
         }
         catch (Exception ex)
         {
+            _logger.LogError(
+                ex,
+                "PAX sale threw an exception for payment {PaymentId} terminal {TerminalId}",
+                request.PaymentId,
+                request.TerminalId);
             return Failure("EXCEPTION", ex.Message);
         }
+    }
+
+    private static string BuildEcrReferenceNumber(TerminalSaleRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.EcrReferenceNumber))
+        {
+            return request.EcrReferenceNumber.Trim();
+        }
+
+        // Use a 32-char terminal-safe fallback.
+        return Guid.NewGuid().ToString("N");
     }
 
     private static TerminalTransactionResult Failure(string code, string message) =>
@@ -126,6 +205,10 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
         {
             Success = false,
             ResponseCode = code,
-            ResponseMessage = message
+            ResponseMessage = message,
+            ApprovalCode = string.Empty,
+            ReferenceNumber = string.Empty,
+            CardType = string.Empty,
+            MaskedPan = string.Empty
         };
 }
