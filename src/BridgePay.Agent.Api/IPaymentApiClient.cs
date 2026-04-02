@@ -4,8 +4,11 @@ namespace BridgePay.Agent.Api;
 
 public interface IPaymentApiClient
 {
-    Task PostResultAsync(
-        PublisherPubSubMessage message,
+    Task PostPaymentEventAsync(
+        string paymentId,
         string status,
+        string eventType,
+        DateTimeOffset occurredAt,
         CancellationToken cancellationToken);
 }
+ 

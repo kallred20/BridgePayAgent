@@ -5,7 +5,6 @@ using BridgePay.Agent.Messaging;
 using BridgePay.Agent.PosLink;
 using BridgePay.Agent.Storage;
 using BridgePay.Agent.Terminals;
-using System.Runtime.InteropServices;
 
 namespace BridgePay.Agent.Worker;
 
@@ -122,10 +121,7 @@ public sealed class Worker : BackgroundService
 
         var serializedResult = JsonSerializer.Serialize(result);
         await _executionStore.SaveAsync(request.PaymentId, serializedResult, cancellationToken);
-        await _paymentApiClient.PostResultAsync(
-            message,
-            result.Success ? "completed" : "failed",
-            cancellationToken);
+        await PostPaymentEventAsync(message.PaymentId, result.Success, cancellationToken);
 
         return true;
     }
@@ -151,7 +147,20 @@ public sealed class Worker : BackgroundService
             JsonSerializer.Serialize(failureResult),
             cancellationToken);
 
-        await _paymentApiClient.PostResultAsync(message, status, cancellationToken);
+        await PostPaymentEventAsync(message.PaymentId, false, cancellationToken);
+    }
+
+    private Task PostPaymentEventAsync(
+        string paymentId,
+        bool succeeded,
+        CancellationToken cancellationToken)
+    {
+        return _paymentApiClient.PostPaymentEventAsync(
+            paymentId,
+            succeeded ? "APPROVED" : "FAILED",
+            succeeded ? "PAYMENT_COMPLETED" : "PAYMENT_FAILED",
+            DateTimeOffset.UtcNow,
+            cancellationToken);
     }
 
     private static bool TryBuildSaleRequest(

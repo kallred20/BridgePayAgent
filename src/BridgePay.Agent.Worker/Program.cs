@@ -15,13 +15,15 @@ builder.Services.AddWindowsService(options =>
 
 builder.Services.Configure<TerminalOptions>(
     builder.Configuration.GetSection("TerminalOptions"));
+builder.Services.Configure<PaymentApiOptions>(
+    builder.Configuration.GetSection(PaymentApiOptions.SectionName));
 
 builder.Services.AddHostedService<Worker>();
 
 builder.Services.AddSingleton<IPaxPosLinkClient, PaxPosLinkClient>();
 builder.Services.AddSingleton<ITerminalRegistry, TerminalRegistry>();
 builder.Services.AddSingleton<IPubSubConsumer, PubSubConsumer>();
-builder.Services.AddSingleton<IPaymentApiClient, PaymentApiClient>();
+builder.Services.AddHttpClient<IPaymentApiClient, PaymentApiClient>();
 builder.Services.AddSingleton<IExecutionStore, FileExecutionStore>();
 
 var host = builder.Build();
