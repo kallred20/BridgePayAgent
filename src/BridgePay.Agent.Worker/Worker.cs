@@ -121,7 +121,12 @@ public sealed class Worker : BackgroundService
 
         var serializedResult = JsonSerializer.Serialize(result);
         await _executionStore.SaveAsync(request.PaymentId, serializedResult, cancellationToken);
-        await PostPaymentEventAsync(message.PaymentId, result.Success, cancellationToken);
+        await PostPaymentEventAsync(
+            message.PaymentId,
+            result.Success,
+            result.Success ? null : result.ResponseCode,
+            result.Success ? null : result.ResponseMessage,
+            cancellationToken);
 
         return true;
     }
@@ -147,12 +152,14 @@ public sealed class Worker : BackgroundService
             JsonSerializer.Serialize(failureResult),
             cancellationToken);
 
-        await PostPaymentEventAsync(message.PaymentId, false, cancellationToken);
+        await PostPaymentEventAsync(message.PaymentId, false, status, status, cancellationToken);
     }
 
     private Task PostPaymentEventAsync(
         string paymentId,
         bool succeeded,
+        string? errorCode,
+        string? errorMessage,
         CancellationToken cancellationToken)
     {
         return _paymentApiClient.PostPaymentEventAsync(
@@ -160,6 +167,8 @@ public sealed class Worker : BackgroundService
             succeeded ? "APPROVED" : "FAILED",
             succeeded ? "PAYMENT_COMPLETED" : "PAYMENT_FAILED",
             DateTimeOffset.UtcNow,
+            errorCode,
+            errorMessage,
             cancellationToken);
     }
 

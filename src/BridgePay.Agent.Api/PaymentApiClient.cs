@@ -26,6 +26,8 @@ public sealed class PaymentApiClient : IPaymentApiClient
         string status,
         string eventType,
         DateTimeOffset occurredAt,
+        string? errorCode,
+        string? errorMessage,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(paymentId))
@@ -35,7 +37,7 @@ public sealed class PaymentApiClient : IPaymentApiClient
 
         var response = await _httpClient.PostAsJsonAsync(
             $"payments/{Uri.EscapeDataString(paymentId)}/events",
-            new PaymentEventRequest(status, eventType, occurredAt),
+            new PaymentEventRequest(status, eventType, occurredAt, errorCode, errorMessage),
             cancellationToken);
 
         response.EnsureSuccessStatusCode();
@@ -49,5 +51,7 @@ public sealed class PaymentApiClient : IPaymentApiClient
     private sealed record PaymentEventRequest(
         [property: JsonPropertyName("status")] string Status,
         [property: JsonPropertyName("event_type")] string EventType,
-        [property: JsonPropertyName("occurred_at")] DateTimeOffset OccurredAt);
+        [property: JsonPropertyName("occurred_at")] DateTimeOffset OccurredAt,
+        [property: JsonPropertyName("error_code")] string? ErrorCode,
+        [property: JsonPropertyName("error_message")] string? ErrorMessage);
 }

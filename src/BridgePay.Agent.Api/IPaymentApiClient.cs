@@ -9,6 +9,8 @@ public interface IPaymentApiClient
         string status,
         string eventType,
         DateTimeOffset occurredAt,
+        string? errorCode,
+        string? errorMessage,
         CancellationToken cancellationToken);
 }
  
