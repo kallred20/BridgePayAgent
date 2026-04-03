@@ -9,4 +9,9 @@ public interface IPaxPosLinkClient
         TerminalSaleRequest request,
         TerminalEndpoint endpoint,
         CancellationToken cancellationToken);
+
+    Task<TerminalTransactionResult> VoidAsync(
+        TerminalVoidRequest request,
+        TerminalEndpoint endpoint,
+        CancellationToken cancellationToken);
 }

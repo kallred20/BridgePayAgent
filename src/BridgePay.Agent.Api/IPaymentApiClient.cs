@@ -11,6 +11,9 @@ public interface IPaymentApiClient
         DateTimeOffset occurredAt,
         string? errorCode,
         string? errorMessage,
+        string? ecrReferenceNumber,
+        string? hostReferenceNumber,
+        string? terminalReferenceNumber,
         CancellationToken cancellationToken);
 }
  

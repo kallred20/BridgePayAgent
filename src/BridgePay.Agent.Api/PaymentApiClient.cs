@@ -28,6 +28,9 @@ public sealed class PaymentApiClient : IPaymentApiClient
         DateTimeOffset occurredAt,
         string? errorCode,
         string? errorMessage,
+        string? ecrReferenceNumber,
+        string? hostReferenceNumber,
+        string? terminalReferenceNumber,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(paymentId))
@@ -37,7 +40,15 @@ public sealed class PaymentApiClient : IPaymentApiClient
 
         var response = await _httpClient.PostAsJsonAsync(
             $"payments/{Uri.EscapeDataString(paymentId)}/events",
-            new PaymentEventRequest(status, eventType, occurredAt, errorCode, errorMessage),
+            new PaymentEventRequest(
+                status,
+                eventType,
+                occurredAt,
+                errorCode,
+                errorMessage,
+                ecrReferenceNumber,
+                hostReferenceNumber,
+                terminalReferenceNumber),
             cancellationToken);
 
         response.EnsureSuccessStatusCode();
@@ -53,5 +64,8 @@ public sealed class PaymentApiClient : IPaymentApiClient
         [property: JsonPropertyName("event_type")] string EventType,
         [property: JsonPropertyName("occurred_at")] DateTimeOffset OccurredAt,
         [property: JsonPropertyName("error_code")] string? ErrorCode,
-        [property: JsonPropertyName("error_message")] string? ErrorMessage);
+        [property: JsonPropertyName("error_message")] string? ErrorMessage,
+        [property: JsonPropertyName("ecr_reference_number")] string? EcrReferenceNumber,
+        [property: JsonPropertyName("host_reference_number")] string? HostReferenceNumber,
+        [property: JsonPropertyName("terminal_reference_number")] string? TerminalReferenceNumber);
 }

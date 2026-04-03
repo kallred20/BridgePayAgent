@@ -33,6 +33,17 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
         return Task.FromResult(result);
     }
 
+    public Task<TerminalTransactionResult> VoidAsync(
+        TerminalVoidRequest request,
+        TerminalEndpoint endpoint,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var result = ExecuteVoid(request, endpoint, cancellationToken);
+        return Task.FromResult(result);
+    }
+
     private TerminalTransactionResult ExecuteSale(
         TerminalSaleRequest request,
         TerminalEndpoint endpoint,
@@ -123,8 +134,8 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 },
                 TraceInformation = new TraceRequest
                 {
-                    EcrReferenceNumber = "PAY110023226",
-                    InvoiceNumber = "inv000123"
+                    EcrReferenceNumber = ecrReferenceNumber,
+                    InvoiceNumber = invoiceNumber
                 }
             };
 
@@ -165,7 +176,10 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 ResponseCode = responseCode,
                 ResponseMessage = response.ResponseMessage ?? string.Empty,
                 ApprovalCode = response.HostInformation?.AuthorizationCode ?? string.Empty,
-                ReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
+                ReferenceNumber = response.TraceInformation?.ReferenceNumber ?? string.Empty,
+                TerminalReferenceNumber = response.TraceInformation?.ReferenceNumber ?? string.Empty,
+                EcrReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
+                HostReferenceNumber = response.HostInformation?.HostReferenceNumber ?? string.Empty,
                 CardType = response.AccountInformation?.CardType.ToString() ?? string.Empty,
                 MaskedPan = response.AccountInformation?.CurrentAccountNumber ?? string.Empty
             };
@@ -189,11 +203,156 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
         }
     }
 
+    private TerminalTransactionResult ExecuteVoid(
+        TerminalVoidRequest request,
+        TerminalEndpoint endpoint,
+        CancellationToken cancellationToken)
+    {
+        if (request is null)
+        {
+            return Failure("INVALID_REQUEST", "Request is required.");
+        }
+
+        if (endpoint is null)
+        {
+            return Failure("INVALID_ENDPOINT", "Terminal endpoint is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.TerminalId))
+        {
+            return Failure("INVALID_REQUEST", "TerminalId is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(endpoint.IpAddress))
+        {
+            return Failure("INVALID_ENDPOINT", "Terminal IP address is required.");
+        }
+
+        if (endpoint.Port <= 0)
+        {
+            return Failure("INVALID_ENDPOINT", "Terminal port must be greater than zero.");
+        }
+
+        if (!string.Equals(request.TerminalId, endpoint.TerminalId, StringComparison.OrdinalIgnoreCase))
+        {
+            return Failure("TERMINAL_MISMATCH", "Request TerminalId does not match endpoint TerminalId.");
+        }
+
+        var ecrReferenceNumber = BuildEcrReferenceNumber(request.EcrReferenceNumber);
+        if (ecrReferenceNumber.Length > MaxEcrReferenceLength)
+        {
+            return Failure(
+                "INVALID_ECR_REF",
+                $"EcrReferenceNumber exceeds {MaxEcrReferenceLength} characters.");
+        }
+
+        var originalReferenceNumber = request.OriginalReferenceNumber?.Trim();
+        var originalEcrReferenceNumber = request.OriginalEcrReferenceNumber?.Trim();
+        var hostReferenceNumber = request.HostReferenceNumber?.Trim();
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            _logger.LogInformation(
+                "Starting PAX void for payment {PaymentId} terminal {TerminalId} to {IpAddress}:{Port}",
+                request.PaymentId,
+                request.TerminalId,
+                endpoint.IpAddress,
+                endpoint.Port);
+
+            var tcp = new TcpSetting
+            {
+                Ip = endpoint.IpAddress,
+                Port = endpoint.Port,
+                Timeout = TimeoutMs
+            };
+
+            var sdk = POSLinkSemi.GetPOSLinkSemi();
+            var terminal = sdk.GetTerminal(tcp);
+
+            var voidRequest = new DoCreditRequest
+            {
+                TransactionType = TransactionType.VoidSale,
+                TraceInformation = new TraceRequest
+                {
+                    EcrReferenceNumber = ecrReferenceNumber,
+                    OriginalReferenceNumber = originalReferenceNumber,
+                    OriginalEcrReferenceNumber = originalEcrReferenceNumber
+                },
+                HostTraceInformation = string.IsNullOrWhiteSpace(hostReferenceNumber)
+                    ? null
+                    : new HostTraceRequest
+                    {
+                        HostReferenceNumber = hostReferenceNumber
+                    }
+            };
+
+            terminal.Transaction.DoCredit(voidRequest, out DoCreditResponse? response);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (response is null)
+            {
+                return Failure("NO_RESPONSE", "Terminal returned no response.");
+            }
+
+            var responseCode = response.ResponseCode ?? string.Empty;
+            var success =
+                string.Equals(responseCode, "000000", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(responseCode, "0", StringComparison.OrdinalIgnoreCase);
+
+            _logger.LogInformation(
+                "PAX void finished for payment {PaymentId} terminal {TerminalId}: success={Success}, code={ResponseCode}, message={ResponseMessage}",
+                request.PaymentId,
+                request.TerminalId,
+                success,
+                responseCode,
+                response.ResponseMessage ?? string.Empty);
+
+            return new TerminalTransactionResult
+            {
+                Success = success,
+                ResponseCode = responseCode,
+                ResponseMessage = response.ResponseMessage ?? string.Empty,
+                ApprovalCode = response.HostInformation?.AuthorizationCode ?? string.Empty,
+                ReferenceNumber = response.TraceInformation?.ReferenceNumber ?? response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
+                TerminalReferenceNumber = response.TraceInformation?.ReferenceNumber ?? string.Empty,
+                EcrReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
+                HostReferenceNumber = response.HostInformation?.HostReferenceNumber ?? string.Empty,
+                CardType = response.AccountInformation?.CardType.ToString() ?? string.Empty,
+                MaskedPan = response.AccountInformation?.CurrentAccountNumber ?? string.Empty
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning(
+                "PAX void cancelled for payment {PaymentId} terminal {TerminalId}",
+                request.PaymentId,
+                request.TerminalId);
+            return Failure("CANCELLED", "Void operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "PAX void threw an exception for payment {PaymentId} terminal {TerminalId}",
+                request.PaymentId,
+                request.TerminalId);
+            return Failure("EXCEPTION", ex.Message);
+        }
+    }
+
     private static string BuildEcrReferenceNumber(TerminalSaleRequest request)
     {
-        if (!string.IsNullOrWhiteSpace(request.EcrReferenceNumber))
+        return BuildEcrReferenceNumber(request.EcrReferenceNumber);
+    }
+
+    private static string BuildEcrReferenceNumber(string? ecrReferenceNumber)
+    {
+        if (!string.IsNullOrWhiteSpace(ecrReferenceNumber))
         {
-            return request.EcrReferenceNumber.Trim();
+            return ecrReferenceNumber.Trim();
         }
 
         // Use a 32-char terminal-safe fallback.
@@ -208,6 +367,9 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
             ResponseMessage = message,
             ApprovalCode = string.Empty,
             ReferenceNumber = string.Empty,
+            TerminalReferenceNumber = string.Empty,
+            EcrReferenceNumber = string.Empty,
+            HostReferenceNumber = string.Empty,
             CardType = string.Empty,
             MaskedPan = string.Empty
         };

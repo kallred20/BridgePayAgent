@@ -74,23 +74,35 @@ public sealed class Worker : BackgroundService
             ["IdempotencyKey"] = message.IdempotencyKey
         });
 
-        if (!string.Equals(message.Operation, "PAY", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(message.Operation, "PAY", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogError(
-                "Unsupported operation {Operation} for payment {PaymentId}.",
-                message.Operation,
-                message.PaymentId);
-            await RecordFailureAsync(message, "unsupported_operation", cancellationToken);
-            return true;
+            return await HandleSaleAsync(message, cancellationToken);
         }
 
+        if (string.Equals(message.Operation, "VOID", StringComparison.OrdinalIgnoreCase))
+        {
+            return await HandleVoidAsync(message, cancellationToken);
+        }
+
+        _logger.LogError(
+            "Unsupported operation {Operation} for payment {PaymentId}.",
+            message.Operation,
+            message.PaymentId);
+        await RecordFailureAsync(message, "unsupported_operation", true, cancellationToken);
+        return true;
+    }
+
+    private async Task<bool> HandleSaleAsync(
+        PublisherPubSubMessage message,
+        CancellationToken cancellationToken)
+    {
         if (!TryBuildSaleRequest(message, out var request, out var validationError))
         {
             _logger.LogError(
                 "Invalid sale payload for payment {PaymentId}: {ValidationError}",
                 message.PaymentId,
                 validationError);
-            await RecordFailureAsync(message, validationError, cancellationToken);
+            await RecordFailureAsync(message, validationError, true, cancellationToken);
             return true;
         }
 
@@ -105,8 +117,10 @@ public sealed class Worker : BackgroundService
         var terminal = _terminalRegistry.GetByTerminalId(request.TerminalId);
         if (terminal is null)
         {
-            _logger.LogError("Terminal {TerminalId} was not found in configuration.", request.TerminalId);
-            await RecordFailureAsync(message, "terminal_not_found", cancellationToken);
+            _logger.LogError(
+                "Terminal {TerminalId} was not found in configuration.",
+                request.TerminalId);
+            await RecordFailureAsync(message, "terminal_not_found", true, cancellationToken);
             return true;
         }
 
@@ -126,6 +140,57 @@ public sealed class Worker : BackgroundService
             result.Success,
             result.Success ? null : result.ResponseCode,
             result.Success ? null : result.ResponseMessage,
+            result.Success ? result.EcrReferenceNumber : null,
+            result.Success ? result.HostReferenceNumber : null,
+            result.Success ? result.TerminalReferenceNumber ?? result.ReferenceNumber : null,
+            cancellationToken);
+
+        return true;
+    }
+
+    private async Task<bool> HandleVoidAsync(
+        PublisherPubSubMessage message,
+        CancellationToken cancellationToken)
+    {
+        if (!TryBuildVoidRequest(message, out var request, out var validationError))
+        {
+            _logger.LogError(
+                "Invalid void payload for payment {PaymentId}: {ValidationError}",
+                message.PaymentId,
+                validationError);
+            await RecordFailureAsync(message, validationError, false, cancellationToken);
+            return true;
+        }
+
+        _logger.LogInformation(
+            "Processing {Operation} for payment {PaymentId} store {StoreId} terminal {TerminalId}",
+            message.Operation,
+            request.PaymentId,
+            message.StoreId,
+            request.TerminalId);
+
+        var terminal = _terminalRegistry.GetByTerminalId(request.TerminalId);
+        if (terminal is null)
+        {
+            _logger.LogError(
+                "Terminal {TerminalId} was not found in configuration.",
+                request.TerminalId);
+            await RecordFailureAsync(message, "terminal_not_found", false, cancellationToken);
+            return true;
+        }
+
+        var result = await _paxClient.VoidAsync(request, terminal, cancellationToken);
+
+        _logger.LogInformation(
+            "Void response for payment {PaymentId}: success={Success}, code={ResponseCode}, message={ResponseMessage}",
+            request.PaymentId,
+            result.Success,
+            result.ResponseCode,
+            result.ResponseMessage);
+
+        await _executionStore.SaveAsync(
+            request.PaymentId,
+            JsonSerializer.Serialize(result),
             cancellationToken);
 
         return true;
@@ -134,6 +199,7 @@ public sealed class Worker : BackgroundService
     private async Task RecordFailureAsync(
         PublisherPubSubMessage message,
         string status,
+        bool postPaymentFailedEvent,
         CancellationToken cancellationToken)
     {
         var failureResult = new TerminalTransactionResult
@@ -143,6 +209,9 @@ public sealed class Worker : BackgroundService
             ResponseMessage = status,
             ApprovalCode = string.Empty,
             ReferenceNumber = string.Empty,
+            TerminalReferenceNumber = string.Empty,
+            EcrReferenceNumber = string.Empty,
+            HostReferenceNumber = string.Empty,
             CardType = string.Empty,
             MaskedPan = string.Empty
         };
@@ -152,7 +221,10 @@ public sealed class Worker : BackgroundService
             JsonSerializer.Serialize(failureResult),
             cancellationToken);
 
-        await PostPaymentEventAsync(message.PaymentId, false, status, status, cancellationToken);
+        if (postPaymentFailedEvent)
+        {
+            await PostPaymentEventAsync(message.PaymentId, false, status, status, null, null, null, cancellationToken);
+        }
     }
 
     private Task PostPaymentEventAsync(
@@ -160,6 +232,9 @@ public sealed class Worker : BackgroundService
         bool succeeded,
         string? errorCode,
         string? errorMessage,
+        string? ecrReferenceNumber,
+        string? hostReferenceNumber,
+        string? terminalReferenceNumber,
         CancellationToken cancellationToken)
     {
         return _paymentApiClient.PostPaymentEventAsync(
@@ -169,6 +244,9 @@ public sealed class Worker : BackgroundService
             DateTimeOffset.UtcNow,
             errorCode,
             errorMessage,
+            ecrReferenceNumber,
+            hostReferenceNumber,
+            terminalReferenceNumber,
             cancellationToken);
     }
 
@@ -212,6 +290,58 @@ public sealed class Worker : BackgroundService
             InvoiceNumber = TryGetString(message.ExtraFields, "invoice_id", "invoice_number", "invoiceNumber"),
             EcrReferenceNumber = TryGetString(message.ExtraFields, "ecr_reference_number", "ecrReferenceNumber"),
             ClerkId = TryGetString(message.ExtraFields, "clerk_id", "clerkId")
+        };
+
+        return true;
+    }
+
+    private static bool TryBuildVoidRequest(
+        PublisherPubSubMessage message,
+        out TerminalVoidRequest request,
+        out string validationError)
+    {
+        request = default!;
+        validationError = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(message.PaymentId))
+        {
+            validationError = "payment_id_missing";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(message.StoreId))
+        {
+            validationError = "store_id_missing";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(message.TerminalId))
+        {
+            validationError = "terminal_id_missing";
+            return false;
+        }
+
+        request = new TerminalVoidRequest
+        {
+            PaymentId = message.PaymentId,
+            TerminalId = message.TerminalId,
+            EcrReferenceNumber = TryGetString(message.ExtraFields, "ecr_reference_number", "ecrReferenceNumber"),
+            OriginalReferenceNumber = TryGetString(
+                message.ExtraFields,
+                "original_reference_number",
+                "originalReferenceNumber",
+                "reference_number",
+                "referenceNumber"),
+            OriginalEcrReferenceNumber = TryGetString(
+                message.ExtraFields,
+                "original_ecr_reference_number",
+                "originalEcrReferenceNumber"),
+            HostReferenceNumber = TryGetString(
+                message.ExtraFields,
+                "host_reference_number",
+                "hostReferenceNumber",
+                "transaction_uid",
+                "transactionUid")
         };
 
         return true;
