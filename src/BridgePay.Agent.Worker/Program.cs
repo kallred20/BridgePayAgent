@@ -21,6 +21,7 @@ builder.Services.Configure<PaymentApiOptions>(
 builder.Services.AddHostedService<Worker>();
 
 builder.Services.AddSingleton<IPaxPosLinkClient, PaxPosLinkClient>();
+builder.Services.AddSingleton<IGiftCardCommandHandler, GiftCardCommandHandler>();
 builder.Services.AddSingleton<ITerminalRegistry, TerminalRegistry>();
 builder.Services.AddSingleton<IPubSubConsumer, PubSubConsumer>();
 builder.Services.AddHttpClient<IPaymentApiClient, PaymentApiClient>();

@@ -19,6 +19,7 @@ public sealed class Worker : BackgroundService
     private readonly IPubSubConsumer _consumer;
     private readonly ITerminalRegistry _terminalRegistry;
     private readonly IPaxPosLinkClient _paxClient;
+    private readonly IGiftCardCommandHandler _giftCardCommandHandler;
     private readonly IPaymentApiClient _paymentApiClient;
     private readonly IExecutionStore _executionStore;
 
@@ -27,6 +28,7 @@ public sealed class Worker : BackgroundService
         IPubSubConsumer consumer,
         ITerminalRegistry terminalRegistry,
         IPaxPosLinkClient paxPosLinkClient,
+        IGiftCardCommandHandler giftCardCommandHandler,
         IPaymentApiClient paymentApiClient,
         IExecutionStore executionStore)
     {
@@ -34,6 +36,7 @@ public sealed class Worker : BackgroundService
         _consumer = consumer;
         _terminalRegistry = terminalRegistry;
         _paxClient = paxPosLinkClient;
+        _giftCardCommandHandler = giftCardCommandHandler;
         _paymentApiClient = paymentApiClient;
         _executionStore = executionStore;
     }
@@ -79,9 +82,20 @@ public sealed class Worker : BackgroundService
             return await HandleSaleAsync(message, cancellationToken);
         }
 
+        if (string.Equals(message.Operation, "GIFT", StringComparison.OrdinalIgnoreCase))
+        {
+            // Keep gift orchestration in a dedicated handler so the worker stays a message router.
+            return await _giftCardCommandHandler.HandleAsync(message, cancellationToken);
+        }
+
         if (string.Equals(message.Operation, "VOID", StringComparison.OrdinalIgnoreCase))
         {
             return await HandleVoidAsync(message, cancellationToken);
+        }
+
+        if (string.Equals(message.Operation, "RETURN", StringComparison.OrdinalIgnoreCase))
+        {
+            return await HandleReturnAsync(message, cancellationToken);
         }
 
         _logger.LogError(
@@ -196,6 +210,54 @@ public sealed class Worker : BackgroundService
         return true;
     }
 
+    private async Task<bool> HandleReturnAsync(
+        PublisherPubSubMessage message,
+        CancellationToken cancellationToken)
+    {
+        if (!TryBuildReturnRequest(message, out var request, out var validationError))
+        {
+            _logger.LogError(
+                "Invalid return payload for payment {PaymentId}: {ValidationError}",
+                message.PaymentId,
+                validationError);
+            await RecordFailureAsync(message, validationError, false, cancellationToken);
+            return true;
+        }
+
+        _logger.LogInformation(
+            "Processing {Operation} for payment {PaymentId} store {StoreId} terminal {TerminalId}",
+            message.Operation,
+            request.PaymentId,
+            message.StoreId,
+            request.TerminalId);
+
+        var terminal = _terminalRegistry.GetByTerminalId(request.TerminalId);
+        if (terminal is null)
+        {
+            _logger.LogError(
+                "Terminal {TerminalId} was not found in configuration.",
+                request.TerminalId);
+            await RecordFailureAsync(message, "terminal_not_found", false, cancellationToken);
+            return true;
+        }
+
+        var result = await _paxClient.ReturnAsync(request, terminal, cancellationToken);
+
+        _logger.LogInformation(
+            "Return response for payment {PaymentId}: success={Success}, code={ResponseCode}, message={ResponseMessage}",
+            request.PaymentId,
+            result.Success,
+            result.ResponseCode,
+            result.ResponseMessage);
+
+        await _executionStore.SaveAsync(
+            request.PaymentId,
+            JsonSerializer.Serialize(result),
+            cancellationToken);
+
+        return true;
+    }
+
     private async Task RecordFailureAsync(
         PublisherPubSubMessage message,
         string status,
@@ -282,13 +344,26 @@ public sealed class Worker : BackgroundService
             return false;
         }
 
+        var ecrReferenceNumber = TryGetString(message.ExtraFields, "ecr_reference_number", "ecrReferenceNumber");
+        if (string.IsNullOrWhiteSpace(ecrReferenceNumber))
+        {
+            validationError = "ecr_reference_number_missing";
+            return false;
+        }
+
+        if (ecrReferenceNumber.Trim().Length != 32)
+        {
+            validationError = "ecr_reference_number_invalid_length";
+            return false;
+        }
+
         request = new TerminalSaleRequest
         {
             PaymentId = message.PaymentId,
             TerminalId = message.TerminalId,
             Amount = amount,
             InvoiceNumber = TryGetString(message.ExtraFields, "invoice_id", "invoice_number", "invoiceNumber"),
-            EcrReferenceNumber = TryGetString(message.ExtraFields, "ecr_reference_number", "ecrReferenceNumber"),
+            EcrReferenceNumber = ecrReferenceNumber,
             ClerkId = TryGetString(message.ExtraFields, "clerk_id", "clerkId")
         };
 
@@ -342,6 +417,80 @@ public sealed class Worker : BackgroundService
                 "hostReferenceNumber",
                 "transaction_uid",
                 "transactionUid")
+        };
+
+        return true;
+    }
+
+    private static bool TryBuildReturnRequest(
+        PublisherPubSubMessage message,
+        out TerminalReturnRequest request,
+        out string validationError)
+    {
+        request = default!;
+        validationError = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(message.PaymentId))
+        {
+            validationError = "payment_id_missing";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(message.StoreId))
+        {
+            validationError = "store_id_missing";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(message.TerminalId))
+        {
+            validationError = "terminal_id_missing";
+            return false;
+        }
+
+        var ecrReferenceNumber = TryGetString(
+            message.ExtraFields,
+            "ecr_reference_number",
+            "ecrReferenceNumber");
+        if (!string.IsNullOrWhiteSpace(ecrReferenceNumber) && ecrReferenceNumber.Trim().Length > 32)
+        {
+            validationError = "ecr_reference_number_invalid_length";
+            return false;
+        }
+
+        var originalReferenceNumber = TryGetString(
+            message.ExtraFields,
+            "original_reference_number",
+            "originalReferenceNumber",
+            "reference_number",
+            "referenceNumber");
+        var originalEcrReferenceNumber = TryGetString(
+            message.ExtraFields,
+            "original_ecr_reference_number",
+            "originalEcrReferenceNumber");
+        var hostReferenceNumber = TryGetString(
+            message.ExtraFields,
+            "host_reference_number",
+            "hostReferenceNumber",
+            "transaction_uid",
+            "transactionUid");
+
+        if (string.IsNullOrWhiteSpace(originalReferenceNumber) &&
+            string.IsNullOrWhiteSpace(originalEcrReferenceNumber) &&
+            string.IsNullOrWhiteSpace(hostReferenceNumber))
+        {
+            validationError = "original_reference_missing";
+            return false;
+        }
+
+        request = new TerminalReturnRequest
+        {
+            PaymentId = message.PaymentId,
+            TerminalId = message.TerminalId,
+            EcrReferenceNumber = ecrReferenceNumber,
+            OriginalReferenceNumber = originalReferenceNumber,
+            OriginalEcrReferenceNumber = originalEcrReferenceNumber,
+            HostReferenceNumber = hostReferenceNumber
         };
 
         return true;
