@@ -13,7 +13,7 @@ namespace BridgePay.Agent.PosLink;
 public sealed class PaxPosLinkClient : IPaxPosLinkClient
 {
     private const int TimeoutMs = 60000;
-    private const int MaxEcrReferenceLength = 32;
+    private const int MaxEcrReferenceLength = 16;
     private const int MaxClerkIdLength = 8;
     private readonly ILogger<PaxPosLinkClient> _logger;
 
@@ -271,18 +271,7 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
             return Failure("TERMINAL_MISMATCH", "Request TerminalId does not match endpoint TerminalId.");
         }
 
-        var ecrReferenceNumber = request.EcrReferenceNumber?.Trim();
-        if (string.IsNullOrWhiteSpace(ecrReferenceNumber))
-        {
-            return Failure("INVALID_ECR_REF", "EcrReferenceNumber is required.");
-        }
-
-        if (ecrReferenceNumber.Length != MaxEcrReferenceLength)
-        {
-            return Failure(
-                "INVALID_ECR_REF",
-                $"EcrReferenceNumber must be exactly {MaxEcrReferenceLength} characters.");
-        }
+        var ecrReferenceNumber = request.EcrReferenceNumber?.Trim() ?? string.Empty;
 
         var invoiceNumber = request.InvoiceNumber?.Trim() ?? string.Empty;
 
@@ -451,6 +440,13 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 request.TerminalId,
                 endpoint.IpAddress,
                 endpoint.Port);
+            _logger.LogInformation(
+                "PAX void request reference values for payment {PaymentId}: ecrReferenceNumber={EcrReferenceNumber}, originalReferenceNumber={OriginalReferenceNumber}, originalEcrReferenceNumber={OriginalEcrReferenceNumber}, hostReferenceNumber={HostReferenceNumber}",
+                request.PaymentId,
+                ecrReferenceNumber,
+                originalReferenceNumber ?? string.Empty,
+                originalEcrReferenceNumber ?? string.Empty,
+                hostReferenceNumber ?? string.Empty);
 
             var tcp = new TcpSetting
             {
@@ -468,15 +464,9 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 TraceInformation = new TraceRequest
                 {
                     EcrReferenceNumber = ecrReferenceNumber,
-                    OriginalReferenceNumber = originalReferenceNumber,
-                    OriginalEcrReferenceNumber = originalEcrReferenceNumber
+                    OriginalReferenceNumber = originalReferenceNumber
                 },
-                HostTraceInformation = string.IsNullOrWhiteSpace(hostReferenceNumber)
-                    ? null
-                    : new HostTraceRequest
-                    {
-                        HostReferenceNumber = hostReferenceNumber
-                    }
+                HostTraceInformation = null
             };
 
             terminal.Transaction.DoCredit(voidRequest, out DoCreditResponse? response);
@@ -494,12 +484,16 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 string.Equals(responseCode, "0", StringComparison.OrdinalIgnoreCase);
 
             _logger.LogInformation(
-                "PAX void finished for payment {PaymentId} terminal {TerminalId}: success={Success}, code={ResponseCode}, message={ResponseMessage}",
+                "PAX void finished for payment {PaymentId} terminal {TerminalId}: success={Success}, code={ResponseCode}, message={ResponseMessage}, referenceNumber={ReferenceNumber}, terminalReferenceNumber={TerminalReferenceNumber}, ecrReferenceNumber={EcrReferenceNumber}, hostReferenceNumber={HostReferenceNumber}",
                 request.PaymentId,
                 request.TerminalId,
                 success,
                 responseCode,
-                response.ResponseMessage ?? string.Empty);
+                response.ResponseMessage ?? string.Empty,
+                response.TraceInformation?.ReferenceNumber ?? response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
+                response.TraceInformation?.ReferenceNumber ?? string.Empty,
+                response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
+                response.HostInformation?.HostReferenceNumber ?? string.Empty);
 
             return new TerminalTransactionResult
             {
@@ -687,11 +681,13 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
     {
         if (!string.IsNullOrWhiteSpace(ecrReferenceNumber))
         {
-            return ecrReferenceNumber.Trim();
+            var trimmed = ecrReferenceNumber.Trim();
+            return trimmed.Length <= MaxEcrReferenceLength
+                ? trimmed
+                : trimmed[..MaxEcrReferenceLength];
         }
 
-        // Use a 32-char terminal-safe fallback.
-        return Guid.NewGuid().ToString("N");
+        return Guid.NewGuid().ToString("N")[..MaxEcrReferenceLength];
     }
 
     private static bool RequiresAmount(TerminalGiftTransactionType type)

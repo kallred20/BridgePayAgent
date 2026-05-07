@@ -149,15 +149,26 @@ public sealed class Worker : BackgroundService
 
         var serializedResult = JsonSerializer.Serialize(result);
         await _executionStore.SaveAsync(request.PaymentId, serializedResult, cancellationToken);
-        await PostPaymentEventAsync(
-            message.PaymentId,
-            result.Success,
-            result.Success ? null : result.ResponseCode,
-            result.Success ? null : result.ResponseMessage,
-            result.Success ? result.EcrReferenceNumber : null,
-            result.Success ? result.HostReferenceNumber : null,
-            result.Success ? result.TerminalReferenceNumber ?? result.ReferenceNumber : null,
-            cancellationToken);
+        if (result.Success)
+        {
+            await PostPaymentEventAsync(
+                message.PaymentId,
+                true,
+                null,
+                null,
+                result.EcrReferenceNumber,
+                result.HostReferenceNumber,
+                result.TerminalReferenceNumber ?? result.ReferenceNumber,
+                cancellationToken);
+        }
+        else
+        {
+            await TryPostFailurePaymentEventAsync(
+                message.PaymentId,
+                result.ResponseCode,
+                result.ResponseMessage,
+                cancellationToken);
+        }
 
         return true;
     }
@@ -182,6 +193,13 @@ public sealed class Worker : BackgroundService
             request.PaymentId,
             message.StoreId,
             request.TerminalId);
+        _logger.LogInformation(
+            "Void reference values for payment {PaymentId}: ecrReferenceNumber={EcrReferenceNumber}, originalReferenceNumber={OriginalReferenceNumber}, originalEcrReferenceNumber={OriginalEcrReferenceNumber}, hostReferenceNumber={HostReferenceNumber}",
+            request.PaymentId,
+            request.EcrReferenceNumber ?? string.Empty,
+            request.OriginalReferenceNumber ?? string.Empty,
+            request.OriginalEcrReferenceNumber ?? string.Empty,
+            request.HostReferenceNumber ?? string.Empty);
 
         var terminal = _terminalRegistry.GetByTerminalId(request.TerminalId);
         if (terminal is null)
@@ -196,11 +214,15 @@ public sealed class Worker : BackgroundService
         var result = await _paxClient.VoidAsync(request, terminal, cancellationToken);
 
         _logger.LogInformation(
-            "Void response for payment {PaymentId}: success={Success}, code={ResponseCode}, message={ResponseMessage}",
+            "Void response for payment {PaymentId}: success={Success}, code={ResponseCode}, message={ResponseMessage}, referenceNumber={ReferenceNumber}, terminalReferenceNumber={TerminalReferenceNumber}, ecrReferenceNumber={EcrReferenceNumber}, hostReferenceNumber={HostReferenceNumber}",
             request.PaymentId,
             result.Success,
             result.ResponseCode,
-            result.ResponseMessage);
+            result.ResponseMessage,
+            result.ReferenceNumber ?? string.Empty,
+            result.TerminalReferenceNumber ?? string.Empty,
+            result.EcrReferenceNumber ?? string.Empty,
+            result.HostReferenceNumber ?? string.Empty);
 
         await _executionStore.SaveAsync(
             request.PaymentId,
@@ -285,7 +307,32 @@ public sealed class Worker : BackgroundService
 
         if (postPaymentFailedEvent)
         {
-            await PostPaymentEventAsync(message.PaymentId, false, status, status, null, null, null, cancellationToken);
+            await TryPostFailurePaymentEventAsync(
+                message.PaymentId,
+                status,
+                status,
+                cancellationToken);
+        }
+    }
+
+    private async Task TryPostFailurePaymentEventAsync(
+        string paymentId,
+        string errorCode,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // A callback failure should not turn an already-handled invalid message into a retry loop.
+            await PostPaymentEventAsync(paymentId, false, errorCode, errorMessage, null, null, null, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to post failed payment event for payment {PaymentId} with code {ErrorCode}. Acking original Pub/Sub message to avoid retry loop.",
+                paymentId,
+                errorCode);
         }
     }
 
@@ -344,26 +391,13 @@ public sealed class Worker : BackgroundService
             return false;
         }
 
-        var ecrReferenceNumber = TryGetString(message.ExtraFields, "ecr_reference_number", "ecrReferenceNumber");
-        if (string.IsNullOrWhiteSpace(ecrReferenceNumber))
-        {
-            validationError = "ecr_reference_number_missing";
-            return false;
-        }
-
-        if (ecrReferenceNumber.Trim().Length != 32)
-        {
-            validationError = "ecr_reference_number_invalid_length";
-            return false;
-        }
-
         request = new TerminalSaleRequest
         {
             PaymentId = message.PaymentId,
             TerminalId = message.TerminalId,
             Amount = amount,
             InvoiceNumber = TryGetString(message.ExtraFields, "invoice_id", "invoice_number", "invoiceNumber"),
-            EcrReferenceNumber = ecrReferenceNumber,
+            EcrReferenceNumber = TryGetString(message.ExtraFields, "ecr_reference_number", "ecrReferenceNumber"),
             ClerkId = TryGetString(message.ExtraFields, "clerk_id", "clerkId")
         };
 
@@ -405,6 +439,8 @@ public sealed class Worker : BackgroundService
                 message.ExtraFields,
                 "original_reference_number",
                 "originalReferenceNumber",
+                "terminal_reference_number",
+                "terminalReferenceNumber",
                 "reference_number",
                 "referenceNumber"),
             OriginalEcrReferenceNumber = TryGetString(
@@ -462,6 +498,8 @@ public sealed class Worker : BackgroundService
             message.ExtraFields,
             "original_reference_number",
             "originalReferenceNumber",
+            "terminal_reference_number",
+            "terminalReferenceNumber",
             "reference_number",
             "referenceNumber");
         var originalEcrReferenceNumber = TryGetString(

@@ -77,16 +77,27 @@ public sealed class GiftCardCommandHandler : IGiftCardCommandHandler
             JsonSerializer.Serialize(result),
             cancellationToken);
 
-        // Gift responses flow back through the same callback contract the worker already uses for payments.
-        await PostPaymentEventAsync(
-            request.PaymentId,
-            result.Success,
-            result.Success ? null : result.ResponseCode,
-            result.Success ? null : result.ResponseMessage,
-            result.Success ? result.EcrReferenceNumber : null,
-            result.Success ? result.HostReferenceNumber : null,
-            result.Success ? result.TerminalReferenceNumber ?? result.ReferenceNumber : null,
-            cancellationToken);
+        if (result.Success)
+        {
+            // Gift responses flow back through the same callback contract the worker already uses for payments.
+            await PostPaymentEventAsync(
+                request.PaymentId,
+                true,
+                null,
+                null,
+                result.EcrReferenceNumber,
+                result.HostReferenceNumber,
+                result.TerminalReferenceNumber ?? result.ReferenceNumber,
+                cancellationToken);
+        }
+        else
+        {
+            await TryPostFailurePaymentEventAsync(
+                request.PaymentId,
+                result.ResponseCode,
+                result.ResponseMessage,
+                cancellationToken);
+        }
 
         return true;
     }
@@ -115,15 +126,40 @@ public sealed class GiftCardCommandHandler : IGiftCardCommandHandler
             JsonSerializer.Serialize(failureResult),
             cancellationToken);
 
-        await PostPaymentEventAsync(
+        await TryPostFailurePaymentEventAsync(
             message.PaymentId,
-            false,
             status,
             status,
-            null,
-            null,
-            null,
             cancellationToken);
+    }
+
+    private async Task TryPostFailurePaymentEventAsync(
+        string paymentId,
+        string errorCode,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // A callback failure should not turn an already-handled invalid message into a retry loop.
+            await PostPaymentEventAsync(
+                paymentId,
+                false,
+                errorCode,
+                errorMessage,
+                null,
+                null,
+                null,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to post failed gift payment event for payment {PaymentId} with code {ErrorCode}. Acking original Pub/Sub message to avoid retry loop.",
+                paymentId,
+                errorCode);
+        }
     }
 
     private Task PostPaymentEventAsync(
