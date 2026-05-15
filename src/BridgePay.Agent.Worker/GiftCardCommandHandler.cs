@@ -88,6 +88,7 @@ public sealed class GiftCardCommandHandler : IGiftCardCommandHandler
                 result.EcrReferenceNumber,
                 result.HostReferenceNumber,
                 result.TerminalReferenceNumber ?? result.ReferenceNumber,
+                result.CardLast4,
                 cancellationToken);
         }
         else
@@ -118,7 +119,8 @@ public sealed class GiftCardCommandHandler : IGiftCardCommandHandler
             EcrReferenceNumber = string.Empty,
             HostReferenceNumber = string.Empty,
             CardType = string.Empty,
-            MaskedPan = string.Empty
+            MaskedPan = string.Empty,
+            CardLast4 = string.Empty
         };
 
         await _executionStore.SaveAsync(
@@ -150,6 +152,7 @@ public sealed class GiftCardCommandHandler : IGiftCardCommandHandler
                 null,
                 null,
                 null,
+                null,
                 cancellationToken);
         }
         catch (Exception ex)
@@ -170,6 +173,7 @@ public sealed class GiftCardCommandHandler : IGiftCardCommandHandler
         string? ecrReferenceNumber,
         string? hostReferenceNumber,
         string? terminalReferenceNumber,
+        string? last4,
         CancellationToken cancellationToken)
     {
         return _paymentApiClient.PostPaymentEventAsync(
@@ -182,6 +186,7 @@ public sealed class GiftCardCommandHandler : IGiftCardCommandHandler
             ecrReferenceNumber,
             hostReferenceNumber,
             terminalReferenceNumber,
+            last4,
             cancellationToken);
     }
 

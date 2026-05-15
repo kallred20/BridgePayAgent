@@ -207,7 +207,8 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 EcrReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
                 HostReferenceNumber = response.HostInformation?.HostReferenceNumber ?? string.Empty,
                 CardType = response.AccountInformation?.CardType.ToString() ?? string.Empty,
-                MaskedPan = response.AccountInformation?.CurrentAccountNumber ?? string.Empty
+                MaskedPan = GetCardLast4(response.AccountInformation),
+                CardLast4 = GetCardLast4(response.AccountInformation)
             };
         }
         catch (OperationCanceledException)
@@ -361,7 +362,8 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 EcrReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
                 HostReferenceNumber = response.HostInformation?.HostReferenceNumber ?? string.Empty,
                 CardType = response.AccountInformation?.CardType.ToString() ?? string.Empty,
-                MaskedPan = response.AccountInformation?.CurrentAccountNumber ?? string.Empty
+                MaskedPan = GetCardLast4(response.AccountInformation),
+                CardLast4 = GetCardLast4(response.AccountInformation)
             };
         }
         catch (OperationCanceledException)
@@ -506,7 +508,8 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 EcrReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
                 HostReferenceNumber = response.HostInformation?.HostReferenceNumber ?? string.Empty,
                 CardType = response.AccountInformation?.CardType.ToString() ?? string.Empty,
-                MaskedPan = response.AccountInformation?.CurrentAccountNumber ?? string.Empty
+                MaskedPan = GetCardLast4(response.AccountInformation),
+                CardLast4 = GetCardLast4(response.AccountInformation)
             };
         }
         catch (OperationCanceledException)
@@ -655,7 +658,8 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
                 EcrReferenceNumber = response.TraceInformation?.EcrReferenceNumber ?? string.Empty,
                 HostReferenceNumber = response.HostInformation?.HostReferenceNumber ?? string.Empty,
                 CardType = response.AccountInformation?.CardType.ToString() ?? string.Empty,
-                MaskedPan = response.AccountInformation?.CurrentAccountNumber ?? string.Empty
+                MaskedPan = GetCardLast4(response.AccountInformation),
+                CardLast4 = GetCardLast4(response.AccountInformation)
             };
         }
         catch (OperationCanceledException)
@@ -707,6 +711,58 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
         };
     }
 
+    private static string GetAccountValue(AccountResponse? accountInformation)
+    {
+        return FirstNonWhiteSpace(
+            accountInformation?.HostAccount,
+            accountInformation?.Account,
+            accountInformation?.CurrentAccountNumber);
+    }
+
+    private static string GetCardLast4(AccountResponse? accountInformation)
+    {
+        return ExtractLast4(GetAccountValue(accountInformation));
+    }
+
+    private static string FirstNonWhiteSpace(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string ExtractLast4(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        Span<char> digits = stackalloc char[value.Length];
+        var digitCount = 0;
+        foreach (var character in value)
+        {
+            if (char.IsDigit(character))
+            {
+                digits[digitCount] = character;
+                digitCount++;
+            }
+        }
+
+        if (digitCount <= 4)
+        {
+            return new string(digits[..digitCount]);
+        }
+
+        return new string(digits.Slice(digitCount - 4, 4));
+    }
+
     private static TerminalTransactionResult Failure(string code, string message) =>
         new()
         {
@@ -719,6 +775,7 @@ public sealed class PaxPosLinkClient : IPaxPosLinkClient
             EcrReferenceNumber = string.Empty,
             HostReferenceNumber = string.Empty,
             CardType = string.Empty,
-            MaskedPan = string.Empty
+            MaskedPan = string.Empty,
+            CardLast4 = string.Empty
         };
 }

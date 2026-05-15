@@ -13,4 +13,5 @@ public sealed class TerminalTransactionResult
     public string? HostReferenceNumber { get; init; }
     public string? CardType { get; init; }
     public string? MaskedPan { get; init; }
+    public string? CardLast4 { get; init; }
 }

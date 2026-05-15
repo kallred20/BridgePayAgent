@@ -151,6 +151,12 @@ public sealed class Worker : BackgroundService
         await _executionStore.SaveAsync(request.PaymentId, serializedResult, cancellationToken);
         if (result.Success)
         {
+            _logger.LogInformation(
+                "Terminal card data for payment {PaymentId}: cardType={CardType}, last4={Last4}",
+                request.PaymentId,
+                result.CardType ?? string.Empty,
+                result.CardLast4 ?? string.Empty);
+
             await PostPaymentEventAsync(
                 message.PaymentId,
                 true,
@@ -159,6 +165,7 @@ public sealed class Worker : BackgroundService
                 result.EcrReferenceNumber,
                 result.HostReferenceNumber,
                 result.TerminalReferenceNumber ?? result.ReferenceNumber,
+                result.CardLast4,
                 cancellationToken);
         }
         else
@@ -297,7 +304,8 @@ public sealed class Worker : BackgroundService
             EcrReferenceNumber = string.Empty,
             HostReferenceNumber = string.Empty,
             CardType = string.Empty,
-            MaskedPan = string.Empty
+            MaskedPan = string.Empty,
+            CardLast4 = string.Empty
         };
 
         await _executionStore.SaveAsync(
@@ -324,7 +332,7 @@ public sealed class Worker : BackgroundService
         try
         {
             // A callback failure should not turn an already-handled invalid message into a retry loop.
-            await PostPaymentEventAsync(paymentId, false, errorCode, errorMessage, null, null, null, cancellationToken);
+            await PostPaymentEventAsync(paymentId, false, errorCode, errorMessage, null, null, null, null, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -344,6 +352,7 @@ public sealed class Worker : BackgroundService
         string? ecrReferenceNumber,
         string? hostReferenceNumber,
         string? terminalReferenceNumber,
+        string? last4,
         CancellationToken cancellationToken)
     {
         return _paymentApiClient.PostPaymentEventAsync(
@@ -356,6 +365,7 @@ public sealed class Worker : BackgroundService
             ecrReferenceNumber,
             hostReferenceNumber,
             terminalReferenceNumber,
+            last4,
             cancellationToken);
     }
 

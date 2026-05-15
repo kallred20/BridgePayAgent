@@ -14,6 +14,7 @@ public interface IPaymentApiClient
         string? ecrReferenceNumber,
         string? hostReferenceNumber,
         string? terminalReferenceNumber,
+        string? last4,
         CancellationToken cancellationToken);
 }
  
